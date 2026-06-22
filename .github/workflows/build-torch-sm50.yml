@@ -1,0 +1,73 @@
+name: build-torch-sm50
+
+# Cross-compiles PyTorch 2.9.1 with sm_50 kernels on a GPU-free GitHub runner.
+# Maxwell code generation needs only the CUDA 12.6 toolkit, not a Maxwell device.
+
+on:
+  workflow_dispatch:
+    inputs:
+      torch_version:
+        description: "PyTorch git tag to build"
+        default: "v2.9.1"
+      cuda_version:
+        description: "CUDA toolkit (must be 12.x; 13.x cannot emit sm_50)"
+        default: "12.6.3"
+
+permissions:
+  contents: write   # to upload the wheel to a Release
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04   # glibc 2.35; manylinux-ish, broad compat
+    timeout-minutes: 600
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CUDA 12.6 toolkit (no driver/GPU needed)
+        uses: Jimver/cuda-toolkit@v0.2.21
+        with:
+          cuda: ${{ github.event.inputs.cuda_version }}
+          method: network
+          # toolkit only — building sm_50 cubins needs no GPU/driver
+          sub-packages: '["nvcc", "cudart", "cccl", "nvtx", "cublas", "cusparse", "cusolver", "cufft", "curand", "thrust"]'
+
+      - name: Guard against CUDA 13 (no sm_50)
+        run: |
+          set -e
+          MAJ=$(nvcc --version | grep -oE 'release [0-9]+' | grep -oE '[0-9]+')
+          echo "nvcc major = $MAJ"
+          if [ "$MAJ" -ge 13 ]; then
+            echo "::error::CUDA $MAJ cannot target sm_50 (Maxwell). Use CUDA 12.x."
+            exit 1
+          fi
+
+      - name: Build torch wheel (sm_50)
+        env:
+          TORCH_VERSION: ${{ github.event.inputs.torch_version }}
+          TORCH_CUDA_ARCH_LIST: "5.0;5.2"
+          CUDA_HOME: /usr/local/cuda
+          PYTHON_BIN: python
+          OUTPUT_DIR: ${{ github.workspace }}/dist
+          MAX_JOBS: "4"
+          USE_SYSTEM_NCCL: "0"   # CI build links bundled NCCL; runtime swaps in 2.20.5
+        run: |
+          chmod +x artifacts/torch-sm50/build.sh
+          ./artifacts/torch-sm50/build.sh
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: torch-sm50-wheel
+          path: dist/*.whl
+          retention-days: 14
+
+      - name: Publish to Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.whl

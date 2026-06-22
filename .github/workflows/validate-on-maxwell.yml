@@ -1,0 +1,56 @@
+name: validate-on-maxwell
+
+# On-device validation that GitHub-hosted runners CANNOT do (no Maxwell GPU).
+# Runs on a self-hosted runner installed on `tyangpu1` (2x Tesla M10).
+# Building is GPU-free (other workflow); this is the numerics/integration gate.
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["build-torch-sm50"]
+    types: [completed]
+
+jobs:
+  validate:
+    # self-hosted runner registered with these labels on tyangpu1
+    runs-on: [self-hosted, linux, maxwell]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show GPUs
+        run: nvidia-smi --query-gpu=index,name,compute_cap,memory.total --format=csv
+
+      - name: torch sm_50 smoke test
+        run: |
+          set -e
+          PY=/home/larkinwc/miniconda3/envs/vllm-maxwell/bin/python
+          $PY - <<'EOF'
+          import torch
+          assert torch.cuda.is_available(), "no CUDA"
+          cap = torch.cuda.get_device_capability(0)
+          assert cap[0] == 5, f"expected Maxwell sm_5x, got {cap}"
+          x = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
+          y = x @ x
+          torch.cuda.synchronize()
+          print("sm_50 matmul OK", float(y.float().sum()))
+          EOF
+
+      - name: NCCL 2.20.5 all-reduce smoke test
+        run: |
+          set -e
+          export LD_LIBRARY_PATH=/home/larkinwc/maxwell-stack/artifacts/nccl-2.20.5-sm50/lib:$LD_LIBRARY_PATH
+          # placeholder: run the proven minimal all-reduce harness
+          echo "TODO: invoke /home/larkinwc/maxwell-stack/bench-src/nccl_min220 (2/4/8 GPU)"
+
+      - name: vllm-maxwell plugin discovery
+        run: |
+          set -e
+          PY=/home/larkinwc/miniconda3/envs/vllm-maxwell/bin/python
+          $PY -m pip install -e ./vllm-maxwell
+          $PY - <<'EOF'
+          import vllm_maxwell
+          fqn = vllm_maxwell.register()
+          print("plugin register() ->", fqn)
+          assert fqn == "vllm_maxwell.platform.MaxwellPlatform", fqn
+          EOF

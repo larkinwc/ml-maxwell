@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.whl
+
+# Heavy binary artifacts are published to GH Releases, NOT committed
+*.so
+*.so.*
+artifacts/**/lib/
+artifacts/**/bin/
+artifacts/**/include/
+
+# venvs / envs
+.venv/
+venv/
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/

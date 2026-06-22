@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vllm-maxwell"
+version = "0.0.1"
+description = "Out-of-tree vLLM platform plugin for NVIDIA Maxwell (sm_50) GPUs — Tesla M10 decode tier"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0" }
+authors = [{ name = "larkinwc" }]
+
+# NOTE: torch and vllm are NOT hard-pinned here on purpose — the Maxwell floor
+# requires our *source-built* torch 2.9.1 (sm_50) and a compatible vLLM (v0.16.x),
+# installed from the ml-maxwell index, not PyPI. See ml-maxwell/README.md.
+dependencies = []
+
+[project.optional-dependencies]
+# Reference pins for the Maxwell floor (install via ml-maxwell index).
+floor = [
+    "torch==2.9.1",   # must be the sm_50 source build, not a PyPI wheel
+    "vllm==0.16.*",
+]
+
+# vLLM discovers the platform via this entry point group. Every vLLM worker
+# process loads it; register() returns the fully-qualified Platform class name.
+[project.entry-points."vllm.platform_plugins"]
+maxwell = "vllm_maxwell:register"
+
+[tool.setuptools]
+packages = ["vllm_maxwell"]
