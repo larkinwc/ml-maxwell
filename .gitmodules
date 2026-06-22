@@ -1,0 +1,4 @@
+[submodule "vllm-maxwell-core"]
+	path = vllm-maxwell-core
+	url = https://github.com/larkinwc/vllm-maxwell-core.git
+	branch = maxwell/v0.23

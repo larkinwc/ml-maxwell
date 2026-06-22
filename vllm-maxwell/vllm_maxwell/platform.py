@@ -1,14 +1,17 @@
 """MaxwellPlatform — vLLM out-of-tree Platform for NVIDIA Maxwell (sm_50).
 
-Targets vLLM v0.16.x interface (vllm/platforms/interface.py). Maxwell IS a CUDA
-device, so we subclass the in-tree CUDA platform and override only what Maxwell
-does differently:
+Targets vLLM v0.23.x interface (vllm/platforms/interface.py). Maxwell IS a CUDA
+device, so we subclass the in-tree CUDA platform base and override only what
+Maxwell does differently:
 
   * force fp16 (no bf16/tensor cores, no fp8)
   * route attention to our legacy-csrc backend (FMA dot-product kernels)
   * route TP comms to our host-staged NCCL 2.20.5 communicator (no GPU P2P)
 
 Everything else (memory profiling, model loading, KV spec) inherits from CUDA.
+
+PLUGIN-FIRST: we run against UNMODIFIED upstream v0.23. If a hard cu13/sm_70+
+wall is hit that can't be patched from here, we fork vLLM inside ml-maxwell.
 """
 
 from __future__ import annotations
@@ -17,7 +20,8 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from vllm.platforms.cuda import CudaPlatform
+# v0.23: the CUDA platform is CudaPlatformBase (with Nvml/NonNvml subclasses).
+from vllm.platforms.cuda import CudaPlatformBase
 from vllm.platforms.interface import PlatformEnum
 
 if TYPE_CHECKING:
@@ -26,7 +30,7 @@ if TYPE_CHECKING:
     from vllm.v1.attention.backends.registry import AttentionSelectorConfig
 
 
-class MaxwellPlatform(CudaPlatform):
+class MaxwellPlatform(CudaPlatformBase):
     # Out-of-tree platform. We still behave as CUDA for is_cuda_alike() checks
     # via inheritance, but identify as OOT so vLLM treats us as a plugin.
     _enum = PlatformEnum.OOT
@@ -70,6 +74,7 @@ class MaxwellPlatform(CudaPlatform):
         cls,
         selected_backend: "AttentionBackendEnum",
         attn_selector_config: "AttentionSelectorConfig",
+        num_heads: int | None = None,  # added in v0.23
     ) -> str:
         # Always use the legacy csrc FMA paged-attention backend on Maxwell.
         return "vllm_maxwell.attention.MaxwellAttentionBackend"

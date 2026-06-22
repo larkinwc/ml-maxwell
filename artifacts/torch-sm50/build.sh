@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-# Build PyTorch 2.9.1 from source with Maxwell (sm_50) kernels.
+# Build PyTorch 2.11.0 from source with Maxwell (sm_50) kernels.
 #
-# This is the project GATE: prebuilt torch wheels (2.8+) deleted Maxwell kernels,
-# so every runtime test needs this. Cross-compiles fine WITHOUT a Maxwell GPU
-# (only emits sm_50 cubins; no device needed at build time).
+# This is the project GATE: prebuilt torch wheels (2.8+) deleted Maxwell kernels
+# *from binaries built against CUDA 12.8/13* — but the SOURCE tree still accepts
+# sm_50 (verified: v2.11 cmake CUDA_COMMON_GPU_ARCHITECTURES includes "5.0").
+# Building against CUDA 12.6 restores Maxwell kernels at latest torch.
+# Cross-compiles fine WITHOUT a Maxwell GPU (only emits sm_50 cubins).
+#
+# HARD FLOOR: CUDA 12.6. CUDA 12.8/13 prebuilt binaries drop Maxwell; CUDA 13
+# nvcc cannot emit sm_50 at all. torch/vLLM themselves can be latest.
 #
 # Runs on: any x86_64 Linux with CUDA 12.6 toolkit (GitHub-hosted runner OK).
 set -euo pipefail
 
-TORCH_VERSION="${TORCH_VERSION:-v2.9.1}"
+TORCH_VERSION="${TORCH_VERSION:-v2.11.0}"
 PYTHON_BIN="${PYTHON_BIN:-python3.12}"
 # Maxwell only. 5.0 = M10/GM107. 5.2 = GM20x (Titan X Maxwell etc).
 export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-5.0;5.2}"

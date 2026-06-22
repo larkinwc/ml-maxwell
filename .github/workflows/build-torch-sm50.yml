@@ -1,14 +1,15 @@
 name: build-torch-sm50
 
-# Cross-compiles PyTorch 2.9.1 with sm_50 kernels on a GPU-free GitHub runner.
-# Maxwell code generation needs only the CUDA 12.6 toolkit, not a Maxwell device.
+# Cross-compiles latest PyTorch (2.11) with sm_50 kernels on a GPU-free GitHub
+# runner. Maxwell codegen needs only the CUDA 12.6 toolkit, not a Maxwell device.
+# torch source still accepts sm_50; only the 12.8/13 *binaries* dropped Maxwell.
 
 on:
   workflow_dispatch:
     inputs:
       torch_version:
         description: "PyTorch git tag to build"
-        default: "v2.9.1"
+        default: "v2.11.0"
       cuda_version:
         description: "CUDA toolkit (must be 12.x; 13.x cannot emit sm_50)"
         default: "12.6.3"

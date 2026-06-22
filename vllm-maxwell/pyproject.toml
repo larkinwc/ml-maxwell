@@ -12,15 +12,16 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "larkinwc" }]
 
 # NOTE: torch and vllm are NOT hard-pinned here on purpose — the Maxwell floor
-# requires our *source-built* torch 2.9.1 (sm_50) and a compatible vLLM (v0.16.x),
-# installed from the ml-maxwell index, not PyPI. See ml-maxwell/README.md.
+# requires our *source-built* torch (sm_50, built on CUDA 12.6), not the PyPI
+# wheel. The only hard floor is the CUDA 12.6 toolkit; torch/vLLM can be latest.
+# See ml-maxwell/README.md.
 dependencies = []
 
 [project.optional-dependencies]
-# Reference pins for the Maxwell floor (install via ml-maxwell index).
+# Reference pins for the Maxwell floor (install torch via ml-maxwell index).
 floor = [
-    "torch==2.9.1",   # must be the sm_50 source build, not a PyPI wheel
-    "vllm==0.16.*",
+    "torch==2.11.0",  # must be the sm_50 source build (CUDA 12.6), not PyPI
+    "vllm==0.23.*",
 ]
 
 # vLLM discovers the platform via this entry point group. Every vLLM worker
