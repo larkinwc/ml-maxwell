@@ -14,11 +14,20 @@ The plugin package (`vllm-maxwell`) still holds everything that *can* live
 out-of-tree (Platform, Attention backend, Communicator); the fork holds only what
 genuinely must touch core.
 
-## Candidate changes (to confirm against v0.23 once torch-sm50 exists)
+## Fork diff (applied to `larkinwc/vllm-maxwell-core` @ `maxwell/v0.23`)
+
+| # | Commit | Change | Gating | Status |
+|---|---|---|---|---|
+| 1 | `4cb64bb5d` | `CMakeLists.txt`: add `5.0;5.2` to `CUDA_SUPPORTED_ARCHS` on the **CUDA <12.8** branch | already inside the existing `CMAKE_CUDA_COMPILER_VERSION < 12.8` block (the only toolkit that emits Maxwell) | ✅ verified: cmake reports `CUDA supported target architectures: 5.0;5.2` |
+
+Confirmed self-disabling (no patch needed) — these tensor-core kernels arch-gate
+themselves and skip cleanly on sm_50: W4A8, CUTLASS MLA, Marlin MOE, DSV3 router
+GEMM (SM90+), and others. They print `-- Not building ... no compatible archs`.
+
+## Candidate further changes (to confirm as the build/runtime progresses)
 
 | Area | Likely change | Gating |
 |---|---|---|
-| Build (`setup.py` / CMake) | Allow `TORCH_CUDA_ARCH_LIST` to include `5.0;5.2` without hard error | only when arch explicitly requested |
 | Attention selector | Let `MAXWELL`/legacy csrc backend be selectable when `cc < 7.0` | `get_device_capability()[0] < 7` |
 | dtype checks | Permit fp16 path where bf16 is assumed | when bf16 unsupported by device |
 | Cudagraph | Confirm piecewise capture works on sm_50 (likely no change needed) | — |
