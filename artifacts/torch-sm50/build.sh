@@ -32,14 +32,21 @@ echo "[torch-sm50] CUDA $NVCC_VER, arch=$TORCH_CUDA_ARCH_LIST, torch=$TORCH_VERS
 
 # --- build config: trim everything Maxwell can't / doesn't need ---
 export USE_CUDA=1
-export USE_CUDNN=1
+export USE_CUDNN=0           # cuDNN paths assume tensor cores; off for Maxwell
 export USE_CUSPARSELT=0      # not on Maxwell
 export USE_FLASH_ATTENTION=0 # tensor-core only; we use legacy csrc in vllm-maxwell
 export USE_MEM_EFF_ATTENTION=0
+# CRITICAL: if ROCm is installed (e.g. an MI100 host), torch cmake auto-detects
+# /opt/rocm and tries a HIP build -> "No GPU arch specified for ROCm build".
+# Force it off so this is a pure CUDA/Maxwell build.
+export USE_ROCM=0
 export USE_NCCL=1
 export USE_SYSTEM_NCCL=1     # link our proven nccl-2.20.5-sm50
 export NCCL_ROOT="${NCCL_ROOT:-/opt/maxwell-stack/artifacts/nccl-2.20.5-sm50}"
+export NCCL_INCLUDE_DIR="${NCCL_ROOT}/include"
+export NCCL_LIB_DIR="${NCCL_ROOT}/lib"
 export BUILD_TEST=0
+export USE_KINETO=0
 export MAX_JOBS="${MAX_JOBS:-$(nproc)}"
 
 WORK="${WORK:-/tmp/torch-build}"
