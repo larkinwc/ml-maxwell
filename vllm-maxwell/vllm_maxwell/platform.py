@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 import torch
 
 # v0.23: the CUDA platform is CudaPlatformBase (with Nvml/NonNvml subclasses).
-from vllm.platforms.cuda import CudaPlatformBase
+from vllm.platforms.cuda import NvmlCudaPlatform
 from vllm.platforms.interface import PlatformEnum
 
 if TYPE_CHECKING:
@@ -30,13 +30,24 @@ if TYPE_CHECKING:
     from vllm.v1.attention.backends.registry import AttentionSelectorConfig
 
 
-class MaxwellPlatform(CudaPlatformBase):
+class MaxwellPlatform(NvmlCudaPlatform):
     # Out-of-tree platform. We still behave as CUDA for is_cuda_alike() checks
     # via inheritance, but identify as OOT so vLLM treats us as a plugin.
     _enum = PlatformEnum.OOT
-    device_name: str = "maxwell"
+    device_name: str = "cuda"  # MUST be cuda: torch.device(f"{device_name}:N") in parallel_state
     device_type: str = "cuda"
     dispatch_key: str = "CUDA"
+    # Maxwell (sm_50) is below Triton/inductor's CUDA-capability floor (>=7.0),
+    # so torch.compile-decorated helpers (e.g. the vocab-embedding
+    # get_masked_input_and_mask) must fall back to eager instead of inductor,
+    # which raises GPUTooOldForTriton on GM107.
+    simple_compile_backend: str = "eager"
+
+    @classmethod
+    def is_cuda_alike(cls) -> bool:
+        # Maxwell is a real CUDA device; the OOT enum must not hide that from
+        # is_cuda_alike()-gated paths (sleep-mode allocator, comms, etc.).
+        return True
 
     # ---- capability gates -------------------------------------------------
 
@@ -76,8 +87,14 @@ class MaxwellPlatform(CudaPlatformBase):
         attn_selector_config: "AttentionSelectorConfig",
         num_heads: int | None = None,  # added in v0.23
     ) -> str:
-        # Always use the legacy csrc FMA paged-attention backend on Maxwell.
-        return "vllm_maxwell.attention.MaxwellAttentionBackend"
+        # Delegate to the in-tree CUDA capability-based selector. On sm_50 the
+        # tensor-core backends (FlashAttn/FlashInfer) auto-invalidate and vLLM
+        # falls back to TRITON_ATTN / TORCH_SDPA, which run on CUDA cores with
+        # our patched fp16 csrc kernels. The custom MaxwellAttentionBackend
+        # stub is not used; the validated path is the in-tree fallback.
+        return super().get_attn_backend_cls(
+            selected_backend, attn_selector_config, num_heads
+        )
 
     @classmethod
     def get_device_communicator_cls(cls) -> str:
