@@ -41,14 +41,21 @@ Live tracker for the Maxwell decode tier. Updated as artifacts land.
 6. Numerics-test the rest: `paged_attention_v2`, gptq/awq dequant, moe_wna16.
 7. Runtime deps for serving: install `zmq` etc. (built `--no-deps`); get `vllm` python
    import clean (currently blocked only by missing runtime pkgs, not the C ext).
-8. End-to-end: load a small fp16 model, generate tokens, TP=2 across two dies.
-9. Enable piecewise cudagraphs (CUDA 12.6 supports sm_50 graph capture).
+8. ✅ **End-to-end generation** — exceeded: Qwen3.5-9B GGUF (hybrid GDN), coherent
+   output at TP=2/4/8/16 on the C4130 M10s (branch `maxwell/qwen35-gguf-sm50`,
+   see `vllm-maxwell-core/tools/maxwell/README.md`).
+9. ✅ **CUDA graphs** — FULL capture auto-downgrades to FULL_DECODE_ONLY for the GDN
+   backend; ~1.5× decode vs eager (18.5 tok/s TP=4 on Qwen3.5-9B).
 10. (optional) Rust `vllm-server` gRPC binary needs `protoc` — non-fatal, skip unless needed.
+11. Next: performance tier — see `docs/ROADMAP.md`.
 
-> **device_count = 12** on this box (8 M10 dies + 4 MI100). Scope decode to the
-> M10s via `CUDA_VISIBLE_DEVICES` to keep the tiers separate.
+> Historical (tyangpu1 bring-up box): **device_count = 12** (8 M10 dies + 4 MI100);
+> scope decode via `CUDA_VISIBLE_DEVICES`. Current perf box (2026-07):
+> **uno-PowerEdge-C4130** — 4× Tesla M10 = 16 dies, 1× E5-2695 v4 (single NUMA),
+> 4× DDR4-2133 @ 1DPC (all 4 channels, optimal), Intel DC SSD root, no swap.
 
 ## Hardware levers (optional, cheap)
 
-- Populate empty DIMM channels (2→4 per socket) → ~2× host RAM BW (~37 GB/s) →
-  ~2× host-staged all-reduce ceiling. ~$10–15/DIMM used.
+- ~~Populate empty DIMM channels~~ — done differently per box: the C4130 already
+  runs 1DPC on all 4 channels of its single socket (A1–A4); extra DIMMs there add
+  capacity only. On tyangpu1 (2→4 channels) it remains a ~2× all-reduce-ceiling lever.
