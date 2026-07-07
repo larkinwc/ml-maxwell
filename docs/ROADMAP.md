@@ -53,13 +53,27 @@ pathological (host-bus saturation: 15× load thrash, decode collapse);
 async scheduling was already auto-on (Tier 2.2 no-op); Q6_K in_proj
 requant blocked (gguf-py NotImplementedError).
 
-**Still open:** v3 double-buffered staging (~q4_K still at ~11 GB/s real,
-LDS-bound); MMQ modernization for b>16 aggregate; single-stream is at its
-all-reduce ceiling (~52 collectives/token × ~0.5 ms — only compressed
-allreduce could move it); fold sidecar kernels into `_C` (full rebuild,
-overnight job); upstream PRs for the two gguf.py fixes (need human owner
-per vLLM AGENTS.md); all-quant model OOMs at mns=128 (use mns≤64 or the
-F16 model).
+**Prefill/TTFT arc (2026-07-07):** MMQ was routing all prefill chunks
+through software-dp4a tiles — dropping it for dequant+cuBLAS halved TTFT
+(44 → 86 prefill tok/s; 512-token prompt 11.7 s → 5.9 s). MMQ is now out
+of the dispatch entirely.
+
+**Consolidation state (2026-07-07):** `_C` rebuild in progress on the box
+(bakes the vecdotq/dp4a fixes into the extension); fork PRs opened
+([vllm-maxwell-core#11](https://github.com/larkinwc/vllm-maxwell-core/pull/11),
+[ml-maxwell#1](https://github.com/larkinwc/ml-maxwell/pull/1)).
+
+**Still open (priority order):**
+1. **GDN chunked-prefill CUDA port** — the remaining prefill wall after the
+   MMQ fix (torch-native eager chunk scan); llama.cpp `gated_delta_net.cu`
+   is the reference, integration spec in the evo journal.
+2. v3 double-buffered staging / further tile work (q4_K still ~11 GB/s
+   real, LDS-bound).
+3. Single-stream is at its all-reduce ceiling (~52 collectives/token ×
+   ~0.5 ms) — only compressed allreduce could move it (big effort).
+4. Upstream vLLM PRs for the two gguf.py fixes (need human owner per vLLM
+   AGENTS.md).
+5. All-quant model OOMs at mns=128 (use mns≤64 or the F16 model).
 
 ---
 

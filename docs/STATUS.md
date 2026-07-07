@@ -9,8 +9,11 @@ Live tracker for the Maxwell decode tier. Updated as artifacts land.
 | **Batch-8 decode TP=4+graphs** | ✅ **49.0 tok/s** (was 18.5 — 2.65×); b16 50.3, b64 105.2, b128 122.2; single-stream 17.3 (was 4.4) |
 | Fused GGUF kernels on sm_50 | ✅ dp4a fallback + guard fix (vecdotq bodies compiled EMPTY < cc 6.1); v2/v3 sidecar kernels numerics-gated (max_rel ≤ 1e-3) |
 | Plain-quant in_proj (no --f16-inproj) | ✅ **FIXED** — vLLM merged-shard concat used GGUF file order; `sorted(shard_id)` + same-type grouping. All-quant FIXED.gguf is the batch champion |
-| Kernel dispatch | v1 MMVQ (b1) / v3 FFMA (b2–16) / MMQ (b>16); env-gated via MAXWELL_EVO_* (sidecar: `tools/maxwell/evo/`, not yet folded into `_C`) |
-| Upstream PRs (2 gguf.py fixes) | ⏳ drafted in journal — needs human owner per vLLM AGENTS.md |
+| Kernel dispatch | v1 MMVQ (b1) / v3 FFMA (b2–16) / dequant+cuBLAS (b>16 + prefill — **MMQ dropped**: ≡ dequant at decode, 2× slower at prefill); env-gated via MAXWELL_EVO_* (sidecar: `tools/maxwell/evo/`) |
+| Prefill / TTFT | ✅ 86 tok/s, 5.9 s @512 (was 44 / 11.7 s). Next wall: torch-native GDN chunk scan → llama.cpp `gated_delta_net.cu` port (planned, journal has the spec) |
+| `_C` rebuild with kernel fixes | 🔄 in progress on the box (2026-07-07) — bakes the dp4a/vecdotq fixes into `_C_stable_libtorch`; smoke test after: `MAXWELL_GGUF_DEQUANT=0` without sidecar must be coherent |
+| Fork PRs | ✅ opened: [vllm-maxwell-core#11](https://github.com/larkinwc/vllm-maxwell-core/pull/11) (kernels+fixes), [ml-maxwell#1](https://github.com/larkinwc/ml-maxwell/pull/1) (docs) |
+| Upstream vLLM PRs (2 gguf.py fixes) | ⏳ candidates flagged — needs human owner per vLLM AGENTS.md |
 | DP replicas / TP=16 | ⛔ measured dead ends (host-bus saturation / fixed-floor dominance) |
 
 ## Native floor (the slow, stable layer)
