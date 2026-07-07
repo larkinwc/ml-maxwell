@@ -11,6 +11,58 @@ Status: draft, 2026-07-06. Companion docs: `STATUS.md` (build/validation state),
 
 ---
 
+## ⚡ 2026-07-06/07 update: evo hillclimb executed Tiers 0–2 — batch-8 2.65×
+
+An autonomous hillclimb session worked this roadmap end to end (full
+experiment log: `vllm-maxwell-core/tools/maxwell/evo/JOURNAL.md`, branch
+`evo/hillclimb`, 35 gated experiments). Everything below in this section
+supersedes the corresponding items in Tiers 0–2.
+
+**New records (TP=4 + graphs, all coherence- and numerics-gated):**
+
+| batch | 1 | 8 | 16 | 32 | 64 | 128 |
+|---|---|---|---|---|---|---|
+| tok/s | 16.5–17.3 | **49.0** | **50.3** | 63.8 | 105.2 | 122.2 |
+| was | 4.4 | 18.5 | — | 63.6 | — | — |
+
+TP=4 beats TP=16 on every metric now; TP=16 is retired as a config.
+
+**Root causes found (both in vLLM, not our kernels):**
+1. Vendored `vecdotq.cuh` impl bodies compile EMPTY below cc 6.1 (arch
+   guards with no `#else`) — Tier 1.1's real mechanism. Fixed with a scalar
+   dp4a fallback + guard widening.
+2. `GGUFLinearMethod.apply()` concatenates merged shards in GGUF FILE order
+   (`attn_gate` precedes `attn_qkv` → in_proj output permuted `[z|q|k|v]`)
+   — the true cause of the plain-quant in_proj gibberish. Fixed with
+   `sorted(shard_id)` + same-type shard grouping. **Upstream PR-worthy.**
+   The `--f16-inproj` workaround is retired; the all-quant GGUF is now the
+   batch champion (F16INPROJ keeps a +0.8 tok/s single-stream edge only).
+
+**Kernel work (JIT sidecar `tools/maxwell/evo/`, no `_C` rebuilds):**
+v2 (weight reuse across ≤8 output columns + q8 row reuse), v3 (smem-dequant
++ FFMA multi-vec, no activation quantization, 10× better numerics; 128-thr
+tile), q8_0 v3 (ssm_out had been riding an 8×-re-read path). Dispatch:
+v1 (b1) / v3 (b2–16) / MMQ (b>16). Champion env:
+`MAXWELL_EVO_MMVQ=1 MMVQ_MAX=16 Q4K_MSUM=1 V2=1 V3=1 V3_MIN_B=2
+V3_THREADS=128 POLICY=mmvq+mmq` on `Qwen3.5-9B-FIXED.gguf`.
+
+**Closed (measured, do not re-run):** GDN CUDA port (Triton decode kernel
+already at 86–96% of BW ceiling, 3.2 ms/step); MMQ ≡ dequant at every batch
+(both dp4a-bound); MMV_Y=2 and dp4a short-mul nulls; DP 4-replica serving
+pathological (host-bus saturation: 15× load thrash, decode collapse);
+async scheduling was already auto-on (Tier 2.2 no-op); Q6_K in_proj
+requant blocked (gguf-py NotImplementedError).
+
+**Still open:** v3 double-buffered staging (~q4_K still at ~11 GB/s real,
+LDS-bound); MMQ modernization for b>16 aggregate; single-stream is at its
+all-reduce ceiling (~52 collectives/token × ~0.5 ms — only compressed
+allreduce could move it); fold sidecar kernels into `_C` (full rebuild,
+overnight job); upstream PRs for the two gguf.py fixes (need human owner
+per vLLM AGENTS.md); all-quant model OOMs at mns=128 (use mns≤64 or the
+F16 model).
+
+---
+
 ## 0. Ground truth
 
 Everything below is anchored to what the hardware actually is. Optimizing against
